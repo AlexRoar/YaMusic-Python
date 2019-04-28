@@ -12,6 +12,8 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, error, ID3NoHeaderError, TIT2, TALB, TPE1, TPE2, COMM, USLT, TCOM, TCON, TDRC
 from mutagen.easyid3 import EasyID3
 import os, urllib.parse
+import time
+from tqdm import tqdm
 
 
 class Track:
@@ -164,38 +166,47 @@ class Track:
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.108 Safari/537.36',
             }
 
-            response = requests.get('https://' + (info['track']['coverUri'][:-2]) + 'm1000x1000',
-                                    headers=headers)
 
-            audio = MP3(path, ID3=ID3)
-            audio.delete()
+
             try:
-                audio.add_tags()
-            except error:
-                pass
+                audio = MP3(path, ID3=ID3)
+                audio.delete()
+                try:
+                    audio.add_tags()
+                except error:
+                    pass
+                try:
+                    response = requests.get('https://' + (info['track']['coverUri'][:-2]) + 'm1000x1000',
+                                            headers=headers)
+                    audio.tags.add(
+                        APIC(
+                            encoding=3,  # 3 is for utf-8
+                            mime='image/png',  # image/jpeg or image/png
+                            type=3,  # 3 is for the cover image
+                            desc=u'Cover',
+                            data=response.content
+                        )
+                    )
+                except:
+                    print('Cover error: '+path)
+                if (info['track']['lyricsAvailable']):
+                    audio.tags.add(USLT(encoding=3, lang=u'eng', desc=u'desc', text=info['lyric'][0]['fullLyrics']))
 
-            audio.tags.add(
-                APIC(
-                    encoding=3,  # 3 is for utf-8
-                    mime='image/png',  # image/jpeg or image/png
-                    type=3,  # 3 is for the cover image
-                    desc=u'Cover',
-                    data=response.content
-                )
-            )
-            if (info['track']['lyricsAvailable']):
-                audio.tags.add(USLT(encoding=3, lang=u'eng', desc=u'desc', text=info['lyric'][0]['fullLyrics']))
+                audio.tags.add(TCON(encoding=3, text=u'' + str(info['track']['albums'][0]['genre'])))
+                audio.tags.add(TDRC(encoding=3, text=u'' + str(info['track']['albums'][0]['year'])))
+                audio.save()
+            except:
+                print('Error occurred with metadata for '+path)
 
-            audio.tags.add(TCON(encoding=3, text=u'' + str(info['track']['albums'][0]['genre'])))
-            audio.tags.add(TDRC(encoding=3, text=u'' + str(info['track']['albums'][0]['year'])))
-            audio.save()
-
-            audio = EasyID3(path)
-            audio['title'] = info['track']['title']
-            audio['artist'] = info['track']['artists'][0]['name']
-            audio['album'] = info['track']['albums'][0]['title']
-            audio['composer'] = u""  # clear
-            audio.save()
+            try:
+                audio = EasyID3(path)
+                audio['title'] = info['track']['title']
+                audio['artist'] = info['track']['artists'][0]['name']
+                audio['album'] = info['track']['albums'][0]['title']
+                audio['composer'] = u""  # clear
+                audio.save()
+            except:
+                print('Error occurred with metadata for '+path)
 
     def getDownloadLink(self, track_id, album_id):
         track_id = str(track_id)

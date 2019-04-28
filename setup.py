@@ -12,7 +12,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="PyYaMusic",
-    version="0.3.8",
+    version="0.3.11",
     author="Alex Dremov",
     author_email="dremov.me@gmail.com",
     description="Yandex Music python environment",

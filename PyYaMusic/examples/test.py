@@ -14,5 +14,5 @@ from PyYaMusic.metadata import Metadata
 # p = Playlist('1141', 'RollingStoneRussia')
 # p.downloadAll()
 
-m = Metadata('/Users/aleksandrdremov/PycharmProjects/YaMusic-Python/PyYaMusic/examples/Премьера')
-m.allMetaDataInDir()
+meta = Metadata('/Users/aleksandrdremov/Music/iTunes/iTunes Media/Music')
+meta.allMetaDataInDir(recursively=True, prompt=False)
