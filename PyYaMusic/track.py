@@ -3,17 +3,16 @@
 #
 #
 
-import requests
 import json
 import random
 from PyYaMusic import obfuscYandex
-from playsound import playsound
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, APIC, error, ID3NoHeaderError, TIT2, TALB, TPE1, TPE2, COMM, USLT, TCOM, TCON, TDRC
+from mutagen.id3 import ID3, APIC, error, USLT, TCON, TDRC
 from mutagen.easyid3 import EasyID3
 import os, urllib.parse
-import time
-from tqdm import tqdm
+from pydub import AudioSegment
+from pydub.playback import play
+import requests
 
 
 class Track:
@@ -21,6 +20,9 @@ class Track:
         if len(default_path) != 0:
             if default_path[-1] != '':
                 default_path += '/'
+
+        if not os.path.isdir(default_path):
+            os.makedirs(default_path)
 
         self.default_path = default_path
         self.tracks = []  # Tuples (track id, album id)
@@ -75,7 +77,7 @@ class Track:
     def load_data_tuple(self, trackalbum):
         return self.load_data(trackalbum[0], trackalbum[1])
 
-    def download(self, track_id, album_id, name='auto'):
+    def download(self, track_id, album_id, name='auto', rewrite=False):
         track_id = str(track_id)
         album_id = str(album_id)
         link = self.getDownloadLink(track_id, album_id)
@@ -85,7 +87,7 @@ class Track:
         name = urllib.parse.quote(name, safe='')
         if (name == 'auto'):
             info = self.load_data(track_id, album_id)
-            name = info['artists'][0]['name'] + '_' + info['track']['title'] + '.mp3'
+            name = info['artists'][0]['name'] + '_' + info['track']['title'] + str(track_id) + '.mp3'
         else:
             if name.split('.')[-1] != 'mp3':
                 name = name + '.mp3'
@@ -93,8 +95,8 @@ class Track:
         # print(name)
         name = name.replace(' ', '_')
         name = urllib.parse.quote(name, safe='')
-        if (os.path.isfile(self.default_path + name)):
-            print('Pending... ' + name)
+        if (os.path.isfile(self.default_path + name) and not rewrite):
+            print('\nPending... ' + name)
             return 201
         name = self.default_path + name
         audio = open(name, 'wb')
@@ -127,11 +129,20 @@ class Track:
                 data=response.content
             )
         )
-        if (info['track']['lyricsAvailable']):
-            audio.tags.add(USLT(encoding=3, lang=u'eng', desc=u'desc', text=info['lyric'][0]['fullLyrics']))
+        try:
+            if (info['track']['lyricsAvailable'] and len(info['lyric']) != 0):
+                audio.tags.add(USLT(encoding=3, lang=u'eng', desc=u'desc', text=info['lyric'][0]['fullLyrics']))
+        except:
+            pass
 
-        audio.tags.add(TCON(encoding=3, text=u'' + str(info['track']['albums'][0]['genre'])))
-        audio.tags.add(TDRC(encoding=3, text=u'' + str(info['track']['albums'][0]['year'])))
+        try:
+            audio.tags.add(TCON(encoding=3, text=u'' + str(info['track']['albums'][0]['genre'])))
+        except:
+            pass
+        try:
+            audio.tags.add(TDRC(encoding=3, text=u'' + str(info['track']['albums'][0]['year'])))
+        except:
+            pass
         audio.save()
         audio = EasyID3(name)
         audio['title'] = info['track']['title']
@@ -166,8 +177,6 @@ class Track:
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.108 Safari/537.36',
             }
 
-
-
             try:
                 audio = MP3(path, ID3=ID3)
                 audio.delete()
@@ -188,7 +197,7 @@ class Track:
                         )
                     )
                 except:
-                    print('Cover error: '+path)
+                    print('Cover error: ' + path)
                 if (info['track']['lyricsAvailable']):
                     audio.tags.add(USLT(encoding=3, lang=u'eng', desc=u'desc', text=info['lyric'][0]['fullLyrics']))
 
@@ -196,7 +205,7 @@ class Track:
                 audio.tags.add(TDRC(encoding=3, text=u'' + str(info['track']['albums'][0]['year'])))
                 audio.save()
             except:
-                print('Error occurred with metadata for '+path)
+                print('Error occurred with metadata for ' + path)
 
             try:
                 audio = EasyID3(path)
@@ -206,7 +215,7 @@ class Track:
                 audio['composer'] = u""  # clear
                 audio.save()
             except:
-                print('Error occurred with metadata for '+path)
+                print('Error occurred with metadata for ' + path)
 
     def getDownloadLink(self, track_id, album_id):
         track_id = str(track_id)
@@ -292,18 +301,18 @@ class Track:
         link = self.getFirstDownloadLink()
         link = self.generateLinkWithParams(link[0], link[1])
         self.downloadFirst('cache')
-        # import subprocess
-        # player = subprocess.Popen(["mplayer", "cache.mp3", "-ss", "30"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        #                           stderr=subprocess.PIPE)
-        playsound(self.default_path + 'cache.mp3')
+        self.playMusic(self.default_path + 'cache.mp3')
 
     def playByids(self, track_id, album_id):
         link = self.getDownloadLink(track_id, album_id)
         link = self.generateLinkWithParams(link[0], link[1])
-        self.download(track_id, album_id, 'cache')
-        import subprocess
-        player = subprocess.Popen(["mplayer", "cache.mp3", "-ss", "30"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE)
+        p = self.default_path
+        if not os.path.exists("cache/"):
+            os.mkdir('cache/')
+        self.default_path = 'cache/'
+        self.download(track_id, album_id, 'cache', True)
+        self.default_path = p
+        self.playMusic('cache/cache.mp3')
 
     def getTrackInfo(self, track_id, album_id):
         cookies = {}
@@ -332,3 +341,7 @@ class Track:
                                 cookies=cookies)
 
         return json.loads(response.text)
+
+    def playMusic(self, path):
+        song = AudioSegment.from_mp3(path)
+        play(song)
